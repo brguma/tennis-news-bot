@@ -52,69 +52,36 @@ NEWS_SOURCES = {
     'ESPN Tennis': 'https://www.espn.com/espn/rss/tennis/news'
 }
 
-def fetch_atp_rankings(max_players=250):
-    """Busca rankings atuais do ATP"""
+def fetch_atp_rankings(max_players=250, timeout_seconds=30):
+    """Busca rankings atuais do ATP com timeout"""
     print(f"🔄 Buscando top {max_players} ATP rankings...")
+    start_time = time.time()
     
     try:
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
         
         players = []
         
-        # Busca usando a API do ATP (mais confiável)
+        # Método mais simples primeiro
         try:
             api_url = "https://www.atptour.com/en/rankings/singles"
-            response = requests.get(api_url, headers=headers, timeout=15)
+            response = requests.get(api_url, headers=headers, timeout=10)
             soup = BeautifulSoup(response.content, 'html.parser')
             
-            # Busca pela tabela de rankings
-            ranking_rows = soup.find_all('tr')
+            # Busca links de jogadores
+            player_links = soup.find_all('a', href=lambda x: x and '/en/players/' in x)
             
-            for row in ranking_rows:
-                if len(players) >= max_players:
+            for link in player_links:
+                if len(players) >= max_players or (time.time() - start_time) > timeout_seconds:
                     break
                     
-                # Busca o nome do jogador
-                name_cell = row.find('td', class_='player-cell')
-                if name_cell:
-                    name_link = name_cell.find('a')
-                    if name_link:
-                        full_name = name_link.get_text().strip()
-                        # Remove vírgulas e formata nome (Sobrenome, Nome -> Nome Sobrenome)
-                        if ',' in full_name:
-                            parts = full_name.split(',')
-                            if len(parts) == 2:
-                                full_name = f"{parts[1].strip()} {parts[0].strip()}"
-                        
-                        if full_name and full_name not in players and len(full_name.split()) >= 2:
-                            players.append(full_name)
-        except:
-            pass
-        
-        # Se não conseguiu pelo método anterior, tenta método alternativo
-        if len(players) < 50:
-            print("  🔄 Tentando método alternativo...")
-            for page in range(1, 6):  # Tenta até 5 páginas
-                try:
-                    url = f"https://www.atptour.com/en/rankings/singles?rankRange={((page-1)*50)+1}-{page*50}&countryCode=all"
-                    response = requests.get(url, headers=headers, timeout=10)
-                    soup = BeautifulSoup(response.content, 'html.parser')
-                    
-                    # Busca todos os links de jogadores
-                    player_links = soup.find_all('a', href=lambda x: x and '/en/players/' in x)
-                    
-                    for link in player_links:
-                        if len(players) >= max_players:
-                            break
-                        name = link.get_text().strip()
-                        if name and len(name.split()) >= 2 and name not in players:
-                            players.append(name)
-                    
-                    time.sleep(1)
-                except:
-                    continue
+                name = link.get_text().strip()
+                if name and len(name.split()) >= 2 and name not in players:
+                    players.append(name)
+        except Exception as e:
+            print(f"  ⚠️ Método principal ATP falhou: {e}")
         
         print(f"✅ ATP: {len(players)} jogadores encontrados")
         return players[:max_players]
@@ -123,59 +90,42 @@ def fetch_atp_rankings(max_players=250):
         print(f"❌ Erro ao buscar ATP rankings: {e}")
         return []
 
-def fetch_wta_rankings(max_players=250):
-    """Busca rankings atuais do WTA"""
+def fetch_wta_rankings(max_players=250, timeout_seconds=30):
+    """Busca rankings atuais do WTA com timeout"""
     print(f"🔄 Buscando top {max_players} WTA rankings...")
+    start_time = time.time()
     
     try:
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
         
         players = []
         
-        # Tenta primeiro a API/JSON do WTA
+        # Método simples apenas
         try:
-            api_url = "https://www.wtatennis.com/api/rankings/singles"
-            response = requests.get(api_url, headers=headers, timeout=15)
-            data = response.json()
-            
-            if 'rankings' in data:
-                for player_data in data['rankings'][:max_players]:
-                    if len(players) >= max_players:
-                        break
-                    
-                    first_name = player_data.get('firstName', '').strip()
-                    last_name = player_data.get('lastName', '').strip()
-                    
-                    if first_name and last_name:
-                        full_name = f"{first_name} {last_name}"
-                        players.append(full_name)
-        except:
-            pass
-        
-        # Se a API falhou, tenta scraping direto
-        if len(players) < 50:
-            print("  🔄 API falhou, tentando scraping...")
             url = "https://www.wtatennis.com/rankings/singles"
-            response = requests.get(url, headers=headers, timeout=15)
+            response = requests.get(url, headers=headers, timeout=10)
             soup = BeautifulSoup(response.content, 'html.parser')
             
-            # Busca nomes na tabela
-            player_rows = soup.find_all('tr', limit=max_players + 10)
+            # Busca qualquer link que pareça nome de jogadora
+            all_links = soup.find_all('a')
             
-            for row in player_rows:
-                if len(players) >= max_players:
+            for link in all_links:
+                if len(players) >= max_players or (time.time() - start_time) > timeout_seconds:
                     break
                     
-                # Busca diferentes possibilidades de estrutura
-                name_cell = row.find('td', {'data-title': 'Name'}) or row.find('a', class_='name-link') or row.find('td', class_='name')
-                
-                if name_cell:
-                    full_name = name_cell.get_text().strip()
-                    full_name = re.sub(r'\s+', ' ', full_name)
-                    if len(full_name.split()) >= 2 and full_name not in players:
-                        players.append(full_name)
+                name = link.get_text().strip()
+                # Filtro básico para nomes (duas palavras, sem números)
+                if (name and 
+                    len(name.split()) >= 2 and 
+                    not any(char.isdigit() for char in name) and
+                    len(name) > 5 and len(name) < 40 and
+                    name not in players):
+                    players.append(name)
+                    
+        except Exception as e:
+            print(f"  ⚠️ WTA scraping falhou: {e}")
         
         print(f"✅ WTA: {len(players)} jogadoras encontradas")
         return players[:max_players]
@@ -185,32 +135,37 @@ def fetch_wta_rankings(max_players=250):
         return []
 
 def update_rankings():
-    """Atualiza os rankings dos jogadores"""
+    """Atualiza os rankings dos jogadores (SEM LOOP)"""
     print("🔄 Atualizando rankings...")
     
-    # Busca rankings atuais
-    atp_players = fetch_atp_rankings(250)
-    wta_players = fetch_wta_rankings(250)
+    # Busca rankings atuais com timeout
+    atp_players = fetch_atp_rankings(250, timeout_seconds=20)
+    wta_players = fetch_wta_rankings(250, timeout_seconds=20)
     
-    # Se conseguiu buscar pelo menos 50 de cada, usa os novos
-    if len(atp_players) >= 50 and len(wta_players) >= 50:
-        rankings_data = {
-            'atp_top_250': atp_players,
-            'wta_top_250': wta_players,
-            'last_updated': datetime.now().isoformat(),
-            'total_players': len(atp_players) + len(wta_players)
-        }
-        
-        # Salva os rankings
-        with open('current_rankings.json', 'w', encoding='utf-8') as f:
-            json.dump(rankings_data, f, indent=2, ensure_ascii=False)
-        
-        print(f"✅ Rankings atualizados: {len(atp_players)} homens + {len(wta_players)} mulheres")
-        return atp_players + wta_players
+    # NOVA LÓGICA: Usa o que conseguiu + backup para completar
+    final_atp = atp_players if len(atp_players) > 20 else BACKUP_PLAYERS_MEN
+    final_wta = wta_players if len(wta_players) > 20 else BACKUP_PLAYERS_WOMEN
     
-    else:
-        print("⚠️ Falha na busca automática, usando rankings de backup")
-        return load_current_players()
+    # Remove duplicatas
+    final_atp = list(dict.fromkeys(final_atp))[:250]
+    final_wta = list(dict.fromkeys(final_wta))[:250]
+    
+    rankings_data = {
+        'atp_top_250': final_atp,
+        'wta_top_250': final_wta,
+        'last_updated': datetime.now().isoformat(),
+        'total_players': len(final_atp) + len(final_wta),
+        'atp_source': 'live' if len(atp_players) > 20 else 'backup',
+        'wta_source': 'live' if len(wta_players) > 20 else 'backup'
+    }
+    
+    # Salva os rankings
+    with open('current_rankings.json', 'w', encoding='utf-8') as f:
+        json.dump(rankings_data, f, indent=2, ensure_ascii=False)
+    
+    print(f"✅ Rankings finalizados: {len(final_atp)} homens + {len(final_wta)} mulheres")
+    print(f"📊 ATP: {rankings_data['atp_source']} | WTA: {rankings_data['wta_source']}")
+    return final_atp + final_wta
 
 def load_current_players():
     """Carrega a lista atual de jogadores"""
@@ -350,6 +305,7 @@ def fetch_rss_news(url, source_name, players):
                     'date': datetime.now().strftime('%Y-%m-%d')
                 })
         
+        print(f"✅ {source_name}: {len(news_items)} notícias relevantes")
         return news_items
     
     except Exception as e:
@@ -384,6 +340,8 @@ def fetch_web_news(players):
                         'players': mentioned_players,
                         'date': datetime.now().strftime('%Y-%m-%d')
                     })
+        
+        print(f"✅ ATP Site: {len(news_items)} notícias relevantes")
     
     except Exception as e:
         print(f"❌ Erro ao buscar ATP Tour: {e}")
@@ -445,7 +403,7 @@ def main():
         print("❌ Tokens do Telegram não configurados!")
         return
     
-    # Atualiza rankings se necessário
+    # Atualiza rankings se necessário (SEM POSSIBILIDADE DE LOOP)
     if should_update_rankings():
         current_players = update_rankings()
     else:
