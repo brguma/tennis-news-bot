@@ -1,0 +1,63 @@
+name: Update Tennis Rankings
+
+on:
+  schedule:
+    # Executa toda segunda-feira às 6h (horário UTC - Brasília é UTC-3)
+    # Para 6h Brasília = 9h UTC
+    - cron: '0 9 * * 1'
+  
+  # Permite execução manual
+  workflow_dispatch:
+
+jobs:
+  update-rankings:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests beautifulsoup4 lxml
+    
+    - name: Update rankings
+      run: |
+        python -c "
+        from tennis_bot import update_rankings, send_telegram_message
+        import os
+        
+        # Configura tokens para notificação
+        os.environ['TELEGRAM_BOT_TOKEN'] = '${{ secrets.TELEGRAM_BOT_TOKEN }}'
+        os.environ['TELEGRAM_CHAT_ID'] = '${{ secrets.TELEGRAM_CHAT_ID }}'
+        
+        # Atualiza rankings
+        players = update_rankings()
+        
+        if len(players) > 400:  # Se conseguiu buscar pelo menos 400 jogadores
+            message = f'📊 <b>Rankings Atualizados!</b>\n\n✅ {len(players)} jogadores atualizados\n🔄 Top 250 ATP + Top 250 WTA\n📅 Próxima atualização: segunda-feira'
+            send_telegram_message(message)
+            print(f'✅ Rankings atualizados com sucesso: {len(players)} jogadores')
+        else:
+            message = f'⚠️ <b>Falha na Atualização</b>\n\n❌ Erro ao buscar rankings\n📋 Usando rankings anteriores\n🔄 Tentativa na próxima segunda-feira'
+            send_telegram_message(message)
+            print('❌ Falha na atualização dos rankings')
+        "
+    
+    - name: Commit updated rankings
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+        # Adiciona arquivo de rankings se existir
+        if [ -f "current_rankings.json" ]; then
+          git add current_rankings.json
+          git commit -m "🤖 Auto-update tennis rankings" || echo "No changes to commit"
+          git push || echo "No changes to push"
+        fi
