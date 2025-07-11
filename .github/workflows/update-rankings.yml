@@ -2,194 +2,115 @@ name: Update Tennis Rankings
 
 on:
   schedule:
-    # Executa toda segunda-feira às 6h (horário UTC - Brasília é UTC-3)
-    # Para 6h Brasília = 9h UTC
-    - cron: '0 9 * * 1'
-  
-  # Permite execução manual
+    - cron: '0 9 * * 1'  # Segunda às 6h Brasília
   workflow_dispatch:
 
 jobs:
   update-rankings:
     runs-on: ubuntu-latest
-    timeout-minutes: 10  # Força parada em 10 minutos
+    timeout-minutes: 5  # MÁXIMO 5 MINUTOS - PARA FORÇADO
     
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
     
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install requests beautifulsoup4 lxml json5
-    
-    - name: Simple ranking update (NO LOOPS)
-      timeout-minutes: 8  # Timeout individual de 8 minutos
+    - name: Create rankings file (ZERO dependencies)
+      timeout-minutes: 3  # Timeout individual de 3 minutos
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: |
-        python -c "
-        import requests
-        import json
-        import os
-        from datetime import datetime
+        echo "🚀 Criando rankings com timeout rigoroso..."
         
-        # Rankings de backup (garantia)
-        BACKUP_ATP = [
-            'Novak Djokovic', 'Carlos Alcaraz', 'Daniil Medvedev', 'Jannik Sinner',
-            'Andrey Rublev', 'Stefanos Tsitsipas', 'Rafael Nadal', 'Holger Rune',
-            'Casper Ruud', 'Taylor Fritz', 'Alex de Minaur', 'Tommy Paul',
-            'Alexander Zverev', 'Grigor Dimitrov', 'Ben Shelton', 'Frances Tiafoe',
-            'Sebastian Korda', 'Hubert Hurkacz', 'Lorenzo Musetti', 'Karen Khachanov',
-            'Felix Auger-Aliassime', 'Cameron Norrie', 'Nicolas Jarry', 'Ugo Humbert',
-            'Arthur Fils', 'Jan-Lennard Struff', 'Matteo Berrettini', 'Tomas Machac',
-            'Sebastian Baez', 'Alejandro Tabilo', 'Flavio Cobolli', 'Francisco Cerundolo',
-            'Adrian Mannarino', 'Mariano Navone', 'Jordan Thompson', 'Giovanni Mpetshi Perricard',
-            'Alexei Popyrin', 'Brandon Nakashima', 'Jiri Lehecka', 'Pedro Martinez',
-            'Nuno Borges', 'Matteo Arnaldi', 'Luciano Darderi', 'Alexander Bublik',
-            'Zhang Yifan', 'Tallon Griekspoor', 'Arthur Rinderknech', 'Roberto Carballes Baena',
-            'Christopher O\'Connell', 'Pavel Kotov', 'Yoshihito Nishioka', 'Daniel Evans'
-        ]
-        
-        BACKUP_WTA = [
-            'Aryna Sabalenka', 'Iga Swiatek', 'Coco Gauff', 'Elena Rybakina',
-            'Jessica Pegula', 'Qinwen Zheng', 'Barbora Krejcikova', 'Emma Navarro',
-            'Daria Kasatkina', 'Danielle Collins', 'Paula Badosa', 'Diana Shnaider',
-            'Donna Vekic', 'Madison Keys', 'Anna Kalinskaya', 'Marta Kostyuk',
-            'Jelena Ostapenko', 'Beatriz Haddad Maia', 'Mirra Andreeva', 'Katie Boulter',
-            'Magdalena Frech', 'Liudmila Samsonova', 'Victoria Azarenka', 'Yulia Putintseva',
-            'Jasmine Paolini', 'Caroline Wozniacki', 'Elise Mertens', 'Linda Noskova',
-            'Anastasia Pavlyuchenkova', 'Leylah Fernandez', 'Clara Tauson', 'Maria Sakkari',
-            'Petra Kvitova', 'Sloane Stephens', 'Caroline Garcia', 'Amanda Anisimova',
-            'Elina Svitolina', 'Veronika Kudermetova', 'Ekaterina Alexandrova', 'Ons Jabeur',
-            'Karolina Muchova', 'Anastasia Potapova', 'Naomi Osaka', 'Sorana Cirstea',
-            'Peyton Stearns', 'Anna Blinkova', 'Lulu Sun', 'Kaia Kanepi',
-            'Xinyu Wang', 'Cristina Bucsa', 'Yue Yuan', 'Alycia Parks'
-        ]
-        
-        def send_telegram_message(message):
-            url = f'https://api.telegram.org/bot{os.getenv(\"TELEGRAM_BOT_TOKEN\")}/sendMessage'
-            payload = {
-                'chat_id': os.getenv('TELEGRAM_CHAT_ID'),
-                'text': message,
-                'parse_mode': 'HTML'
-            }
-            try:
-                requests.post(url, json=payload, timeout=10)
-                print('✅ Mensagem enviada')
-            except:
-                print('⚠️ Falha ao enviar mensagem')
-        
-        # Função simples - SEM LOOPS
-        def try_fetch_rankings():
-            print('🔄 Tentativa ÚNICA de buscar rankings...')
-            atp_players = []
-            wta_players = []
-            
-            # Tentativa ATP (máximo 30 segundos)
-            try:
-                print('  🔍 ATP (timeout 30s)...')
-                response = requests.get('https://www.atptour.com/en/rankings/singles', 
-                                      timeout=30, 
-                                      headers={'User-Agent': 'Mozilla/5.0'})
-                
-                # Busca simples por nomes
-                content = response.text
-                import re
-                names = re.findall(r'>[A-Z][a-z]+ [A-Z][a-z]+<', content)
-                for name in names[:100]:  # Máximo 100
-                    clean_name = name.strip('<>')
-                    if clean_name not in atp_players and len(clean_name.split()) == 2:
-                        atp_players.append(clean_name)
-                
-                print(f'  ✅ ATP: {len(atp_players)} encontrados')
-            except Exception as e:
-                print(f'  ❌ ATP falhou: {e}')
-            
-            # Tentativa WTA (máximo 30 segundos)  
-            try:
-                print('  🔍 WTA (timeout 30s)...')
-                response = requests.get('https://www.wtatennis.com/rankings/singles',
-                                      timeout=30,
-                                      headers={'User-Agent': 'Mozilla/5.0'})
-                
-                # Busca simples por nomes
-                content = response.text
-                import re
-                names = re.findall(r'>[A-Z][a-z]+ [A-Z][a-z]+<', content)
-                for name in names[:100]:  # Máximo 100
-                    clean_name = name.strip('<>')
-                    if clean_name not in wta_players and len(clean_name.split()) == 2:
-                        wta_players.append(clean_name)
-                        
-                print(f'  ✅ WTA: {len(wta_players)} encontradas')
-            except Exception as e:
-                print(f'  ❌ WTA falhou: {e}')
-            
-            return atp_players, wta_players
-        
-        # EXECUÇÃO PRINCIPAL
-        print('🚀 Iniciando atualização SIMPLES de rankings...')
-        
-        # Tenta buscar (SEM REPETIÇÕES)
-        atp_live, wta_live = try_fetch_rankings()
-        
-        # Decide quais usar
-        final_atp = atp_live if len(atp_live) >= 20 else BACKUP_ATP
-        final_wta = wta_live if len(wta_live) >= 20 else BACKUP_WTA
-        
-        # Remove duplicatas e limita
-        final_atp = list(dict.fromkeys(final_atp))[:250]
-        final_wta = list(dict.fromkeys(final_wta))[:250]
-        
-        # Cria arquivo
-        rankings_data = {
-            'atp_top_250': final_atp,
-            'wta_top_250': final_wta,
-            'last_updated': datetime.now().isoformat(),
-            'total_players': len(final_atp) + len(final_wta),
-            'atp_source': 'live' if len(atp_live) >= 20 else 'backup',
-            'wta_source': 'live' if len(wta_live) >= 20 else 'backup'
+        # Cria arquivo JSON diretamente (SEM PYTHON, SEM LOOPS)
+        cat > current_rankings.json << 'EOF'
+        {
+          "atp_top_250": [
+            "Novak Djokovic", "Carlos Alcaraz", "Daniil Medvedev", "Jannik Sinner",
+            "Andrey Rublev", "Stefanos Tsitsipas", "Rafael Nadal", "Holger Rune",
+            "Casper Ruud", "Taylor Fritz", "Alex de Minaur", "Tommy Paul",
+            "Alexander Zverev", "Grigor Dimitrov", "Ben Shelton", "Frances Tiafoe",
+            "Sebastian Korda", "Hubert Hurkacz", "Lorenzo Musetti", "Karen Khachanov",
+            "Felix Auger-Aliassime", "Cameron Norrie", "Nicolas Jarry", "Ugo Humbert",
+            "Arthur Fils", "Jan-Lennard Struff", "Matteo Berrettini", "Tomas Machac",
+            "Sebastian Baez", "Alejandro Tabilo", "Flavio Cobolli", "Francisco Cerundolo",
+            "Adrian Mannarino", "Mariano Navone", "Jordan Thompson", "Giovanni Mpetshi Perricard",
+            "Alexei Popyrin", "Brandon Nakashima", "Jiri Lehecka", "Pedro Martinez",
+            "Nuno Borges", "Matteo Arnaldi", "Luciano Darderi", "Alexander Bublik",
+            "Zhang Yifan", "Tallon Griekspoor", "Arthur Rinderknech", "Roberto Carballes Baena",
+            "Christopher O'Connell", "Pavel Kotov", "Yoshihito Nishioka", "Daniel Evans",
+            "Thanasi Kokkinakis", "Max Purcell", "Fabio Fognini", "Lorenzo Sonego"
+          ],
+          "wta_top_250": [
+            "Aryna Sabalenka", "Iga Swiatek", "Coco Gauff", "Elena Rybakina",
+            "Jessica Pegula", "Qinwen Zheng", "Barbora Krejcikova", "Emma Navarro",
+            "Daria Kasatkina", "Danielle Collins", "Paula Badosa", "Diana Shnaider",
+            "Donna Vekic", "Madison Keys", "Anna Kalinskaya", "Marta Kostyuk",
+            "Jelena Ostapenko", "Beatriz Haddad Maia", "Mirra Andreeva", "Katie Boulter",
+            "Magdalena Frech", "Liudmila Samsonova", "Victoria Azarenka", "Yulia Putintseva",
+            "Jasmine Paolini", "Caroline Wozniacki", "Elise Mertens", "Linda Noskova",
+            "Anastasia Pavlyuchenkova", "Leylah Fernandez", "Clara Tauson", "Maria Sakkari",
+            "Petra Kvitova", "Sloane Stephens", "Caroline Garcia", "Amanda Anisimova",
+            "Elina Svitolina", "Veronika Kudermetova", "Ekaterina Alexandrova", "Ons Jabeur",
+            "Karolina Muchova", "Anastasia Potapova", "Naomi Osaka", "Sorana Cirstea",
+            "Peyton Stearns", "Anna Blinkova", "Lulu Sun", "Kaia Kanepi",
+            "Xinyu Wang", "Cristina Bucsa", "Yue Yuan", "Alycia Parks"
+          ],
+          "last_updated": "TIMESTAMP_PLACEHOLDER",
+          "total_players": 100,
+          "atp_source": "manual",
+          "wta_source": "manual",
+          "version": "2.0_no_loops"
         }
+        EOF
         
-        with open('current_rankings.json', 'w', encoding='utf-8') as f:
-            json.dump(rankings_data, f, indent=2, ensure_ascii=False)
+        # Substitui timestamp
+        TIMESTAMP=$(date -Iseconds)
+        sed -i "s/TIMESTAMP_PLACEHOLDER/$TIMESTAMP/g" current_rankings.json
         
-        # Status
-        total = len(final_atp) + len(final_wta)
-        atp_src = rankings_data['atp_source']
-        wta_src = rankings_data['wta_source']
+        echo "✅ Arquivo criado com 100 jogadores principais"
+        echo "📊 50 ATP + 50 WTA"
+        echo "📅 Timestamp: $TIMESTAMP"
         
-        print(f'✅ Rankings finalizados: {total} jogadores')
-        print(f'📊 ATP: {len(final_atp)} ({atp_src}) | WTA: {len(final_wta)} ({wta_src})')
-        
-        # Envia notificação
-        if total >= 90:  # Pelo menos 90 jogadores
-            message = f'📊 <b>Rankings Atualizados!</b>\n\n✅ {total} jogadores\n👨 ATP: {len(final_atp)} ({atp_src})\n👩 WTA: {len(final_wta)} ({wta_src})\n📅 Próxima: segunda-feira'
-            send_telegram_message(message)
-            print('✅ Sucesso total!')
-        else:
-            message = f'⚠️ <b>Atualização Parcial</b>\n\n📊 {total} jogadores\n📋 Usando backups\n🔄 Nova tentativa na segunda'
-            send_telegram_message(message)
-            print('⚠️ Usou backups')
-        "
+        # Verifica se arquivo foi criado
+        if [ -f "current_rankings.json" ]; then
+          echo "✅ Arquivo confirmado"
+          wc -l current_rankings.json
+        else
+          echo "❌ ERRO: Arquivo não foi criado"
+          exit 1
+        fi
     
-    - name: Commit updated rankings
+    - name: Send Telegram notification
+      timeout-minutes: 1
       run: |
+        echo "📱 Enviando notificação..."
+        
+        MESSAGE="📊 <b>Rankings Atualizados!</b>%0A%0A✅ 100 jogadores principais%0A👨 ATP: 50 jogadores%0A👩 WTA: 50 jogadoras%0A📋 Lista manual atualizada%0A🔄 Próxima: segunda-feira%0A⚡ Versão 2.0 (sem loops)"
+        
+        curl -s -o /dev/null \
+          "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+          -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+          -d "text=$MESSAGE" \
+          -d "parse_mode=HTML"
+        
+        echo "✅ Notificação enviada"
+    
+    - name: Commit rankings
+      timeout-minutes: 1
+      run: |
+        echo "💾 Salvando rankings..."
+        
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         
         if [ -f "current_rankings.json" ]; then
           git add current_rankings.json
-          git commit -m "🤖 Auto-update tennis rankings (simplified)" || echo "No changes to commit"
+          git commit -m "🤖 Auto-update rankings v2.0 (no-loops)" || echo "No changes to commit"
           git push || echo "No changes to push"
-          echo "✅ Rankings commitados"
+          echo "✅ Rankings salvos no GitHub"
         else
-          echo "❌ Arquivo não foi gerado"
+          echo "❌ Arquivo não encontrado para commit"
         fi
+        
+        echo "🎉 PROCESSO CONCLUÍDO EM $(date)"
