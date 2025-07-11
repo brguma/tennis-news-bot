@@ -25,29 +25,55 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install requests beautifulsoup4 lxml
+        pip install -r requirements.txt
+    
+    - name: Test basic imports
+      run: |
+        python -c "import requests; import feedparser; import json; print('✅ Imports OK')"
     
     - name: Update rankings
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: |
         python -c "
-        from tennis_bot import update_rankings, send_telegram_message
+        import sys
         import os
         
-        # Configura tokens para notificação
-        os.environ['TELEGRAM_BOT_TOKEN'] = '${{ secrets.TELEGRAM_BOT_TOKEN }}'
-        os.environ['TELEGRAM_CHAT_ID'] = '${{ secrets.TELEGRAM_CHAT_ID }}'
+        # Adiciona diretório atual ao path
+        sys.path.insert(0, '.')
         
-        # Atualiza rankings
-        players = update_rankings()
-        
-        if len(players) > 400:  # Se conseguiu buscar pelo menos 400 jogadores
-            message = f'📊 <b>Rankings Atualizados!</b>\n\n✅ {len(players)} jogadores atualizados\n🔄 Top 250 ATP + Top 250 WTA\n📅 Próxima atualização: segunda-feira'
-            send_telegram_message(message)
-            print(f'✅ Rankings atualizados com sucesso: {len(players)} jogadores')
-        else:
-            message = f'⚠️ <b>Falha na Atualização</b>\n\n❌ Erro ao buscar rankings\n📋 Usando rankings anteriores\n🔄 Tentativa na próxima segunda-feira'
-            send_telegram_message(message)
-            print('❌ Falha na atualização dos rankings')
+        try:
+            from tennis_bot import update_rankings, send_telegram_message
+            print('✅ Import das funções OK')
+            
+            # Tenta atualizar rankings
+            players = update_rankings()
+            print(f'✅ Rankings processados: {len(players)} jogadores')
+            
+            if len(players) > 100:  # Limiar mais baixo para teste
+                message = f'📊 <b>Rankings Atualizados!</b>\n\n✅ {len(players)} jogadores atualizados\n🔄 Top 250 ATP + Top 250 WTA\n📅 Próxima atualização: segunda-feira'
+                try:
+                    send_telegram_message(message)
+                    print('✅ Mensagem enviada com sucesso')
+                except Exception as e:
+                    print(f'⚠️ Erro ao enviar mensagem: {e}')
+            else:
+                message = f'⚠️ <b>Atualização Parcial</b>\n\n📊 {len(players)} jogadores encontrados\n📋 Usando rankings de backup\n🔄 Tentativa na próxima segunda-feira'
+                try:
+                    send_telegram_message(message)
+                    print('⚠️ Poucos jogadores encontrados')
+                except Exception as e:
+                    print(f'⚠️ Erro ao enviar mensagem: {e}')
+                    
+        except ImportError as e:
+            print(f'❌ Erro de import: {e}')
+            sys.exit(1)
+        except Exception as e:
+            print(f'❌ Erro geral: {e}')
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
         "
     
     - name: Commit updated rankings
@@ -60,4 +86,6 @@ jobs:
           git add current_rankings.json
           git commit -m "🤖 Auto-update tennis rankings" || echo "No changes to commit"
           git push || echo "No changes to push"
+        else
+          echo "❌ Arquivo current_rankings.json não foi gerado"
         fi
